@@ -1,0 +1,20 @@
+version: "3.8"
+
+services:
+  mc:
+    image: itzg/minecraft-server
+    container_name: mc-server
+    ports:
+      - "25565:25565" # 默认的 Minecraft 端口
+    environment:
+      EULA: "TRUE"    # 必须接受最终用户许可协议才能运行
+      VERSION: "26.1.2" # 运行最新版本。也可以指定版本号，例如 "1.20.4"
+      MEMORY: "3G"    # 分配给服务器的内存大小，根据机器配置调整
+      TYPE: "VANILLA"   # 推荐使用 PAPER，如果想玩纯原版，请保持 "VANILLA"
+      TZ: "Asia/Shanghai"
+      # 🌟 核心魔法：读取脚本传进来的动态变量！防呆默认 1000
+      UID: ${APP_UID:-1000}
+      GID: ${APP_GID:-1000}   
+    volumes:
+      - /opt/minecraft/data:/data  # 将容器内的数据映射到你创建的 /data 文件夹
+    restart: unless-stopped # 除非手动停止，否则开机或奔溃后自动重启
