@@ -31,10 +31,10 @@ function check_docker_status() {
     fi
 }
 
-# 函数: 检测 Docker-Compose 的运行状态 0: Installed, 1:Not Installed
+# 函数: 检测 docker Compose 的运行状态 0: Installed, 1:Not Installed
 function check_docker_compose_status() {
 	
-	if command -v docker-compose >/dev/null 2>&1; then
+	if command -v docker compose >/dev/null 2>&1; then
         return 0
     else
         return 1
@@ -170,7 +170,7 @@ function do_start() {
     local START_TIME=$(date +%s)
     
     # 启动容器
-    docker-compose up -d --remove-orphans
+    docker compose up -d --remove-orphans
     
     log::info "⏳ Waiting for Minecraft server to fully initialize (this may take a few minutes)..."
     
@@ -340,7 +340,7 @@ function status() {
     if [ -d "$COMPOSE_DIR" ]; then
         # 必须进入 compose 所在目录才能正确执行 docker-compose ps
         cd "$COMPOSE_DIR" || echo "Failed to enter $COMPOSE_DIR"
-        docker-compose ps
+        docker compose ps
     else
         echo "Compose directory not found. Fallback to basic docker ps:"
         docker ps -a --filter "name=$CONTAINER_NAME"
@@ -641,7 +641,7 @@ function show_menu() {
             check_install && restart
             ;;
         8)
-           check_install && status
+            check_install && status
             ;;
         9)
             check_install && show_log

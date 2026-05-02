@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   mc:
     image: itzg/minecraft-server
@@ -16,5 +14,5 @@ services:
       UID: ${APP_UID:-1000}
       GID: ${APP_GID:-1000}   
     volumes:
-      - /opt/minecraft/data:/data  # 将容器内的数据映射到你创建的 /data 文件夹
+      - $HOME/opt/minecraft/data:/data  # 将容器内的数据映射到你创建的 /data 文件夹
     restart: unless-stopped # 除非手动停止，否则开机或奔溃后自动重启

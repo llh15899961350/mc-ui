@@ -10,14 +10,14 @@ COMMON_DIR="$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")"
 
 # ===== 彩色定义 =====
 COLOR_RESET="\033[0m"
-COLOR_INFO="\033[0;34m"   # 蓝色
-COLOR_WARN="\033[0;33m"   # 黄色
-COLOR_ERROR="\033[0;31m"  # 红色
-COLOR_SUCCESS="\033[0;32m" # 绿色
+COLOR_INFO="\033[0;34m"                                 # Blue
+COLOR_WARN="\033[0;33m"                                 # Yellow
+COLOR_ERROR="\033[0;31m"                                # Red
+COLOR_SUCCESS="\033[0;32m"                              # Green
 
 # ===== 常量定义 =====
 CONTAINER_NAME="mc-server"                             # Name of the Docker container
-COMPOSE_DIR="/opt/minecraft"                           # Directory containing docker-compose.yml
+COMPOSE_DIR="$HOME/opt/minecraft"                      # Directory containing docker-compose.yml
 
 # ==========================================
 # 🛡️ 动态权限注入 (解决跨服务器的权限隔离问题)
@@ -27,7 +27,7 @@ export APP_UID=$(id -u)
 export APP_GID=$(id -g)
 
 # --- Directory Paths ---
-MC_BASE_DIR="/opt/minecraft"                           # Server root directory
+MC_BASE_DIR="$HOME/opt/minecraft"                      # Server root directory
 MC_DATA_DIR="data"                                     # Minecraft data folder name
 MC_BACKUP_DIR="/var/backups/minecraft"                 # Local backup storage (Current Directory)
 MC_RESTORE_DIR="/var/restore/minecraft"                # Temp folder for restoration (Current Directory)
