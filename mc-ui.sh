@@ -31,7 +31,7 @@ function check_docker_status() {
     fi
 }
 
-# 函数: 检测 docker Compose 的运行状态 0: Installed, 1:Not Installed
+# 函数: 检测 Docker Compose 的运行状态 0: Installed, 1:Not Installed
 function check_docker_compose_status() {
 	
 	if command -v docker compose >/dev/null 2>&1; then
@@ -366,9 +366,7 @@ function status() {
 }
 
 function backup() {
-    # 强制指定本地备份绝对路径 (符合 Linux FHS 规范)
-    MC_BACKUP_DIR="/var/backups/minecraft"
-    
+       
     DATE=$(date +"%Y%m%d_%H%M%S")
     FILENAME="${FILENAME_PREFIX}${DATE}.tar.gz"
 
