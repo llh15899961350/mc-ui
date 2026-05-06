@@ -689,6 +689,7 @@ function show_menu() {
             ;;
         3)
             check_install && update_menu
+            ;;
         5)
             check_install && start
             ;;

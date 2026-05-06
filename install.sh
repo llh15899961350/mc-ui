@@ -90,8 +90,21 @@ function init_rclone() {
         log::warn "未检测到名为 '$RCLONE_REMOTE_NAME' 的 Rclone 配置，请根据提示完成授权。"
         rclone config
     else
-        log::success "✅ 检测到已存在 '$RCLONE_REMOTE_NAME' 的 Rclone 配置，跳过绑定。"
-        #帮我实现多一个逻辑,进入存在RCLONE_REMOTE_NAME, 寻求用户是否进入Rclone 配置, y(Entry default), n(No)
+        log::success "✅ 检测到已存在 '$RCLONE_REMOTE_NAME' 的 Rclone 配置。"
+        
+        # 寻求用户是否进入 Rclone 配置，默认值为 Y
+        read -r -p "是否需要进入 Rclone 界面重新/修改配置？[Y/n] (默认 Y): " ENTER_RCLONE
+        
+        # 如果用户直接回车（输入为空），则将其赋值为 Y
+        ENTER_RCLONE=${ENTER_RCLONE:-Y}
+        
+        # 使用正则判断输入是否为 Y 或 y
+        if [[ "$ENTER_RCLONE" =~ ^[Yy]$ ]]; then
+            log::info "正在进入 Rclone 配置界面..."
+            rclone config
+        else
+            log::info "已选择跳过 Rclone 配置。"
+        fi
     fi
 }
 
@@ -151,7 +164,7 @@ function install_mc-ui() {
 
     log::success "🎉 整体安装流程结束！正在为您启动 mc-ui..."
     # 使用绝对路径执行，避免 source .bashrc 无法生效的问题
-    bash "$COMPOSE_DIR/mc-ui.sh"
+    #bash "$COMPOSE_DIR/mc-ui.sh"
 }
 
 echo "The OS release is: $release"
