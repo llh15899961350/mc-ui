@@ -10,6 +10,8 @@ COLOR_SUCCESS="\033[0;32m"
 # ===== 常量定义 =====
 CONTAINER_NAME="mc-server"
 COMPOSE_DIR="$HOME/opt/minecraft"
+# The root URL for the raw GitHub repository. 
+# Used by the update_menu function to download the latest version of the script.
 RAW_REPOSITORY="https://raw.githubusercontent.com/llh15899961350"
 
 # ==========================================
@@ -89,6 +91,7 @@ function init_rclone() {
         rclone config
     else
         log::success "✅ 检测到已存在 '$RCLONE_REMOTE_NAME' 的 Rclone 配置，跳过绑定。"
+        #帮我实现多一个逻辑,进入存在RCLONE_REMOTE_NAME, 寻求用户是否进入Rclone 配置, y(Entry default), n(No)
     fi
 }
 
@@ -128,11 +131,9 @@ function install_base() {
     case "${release}" in
         ubuntu | debian | armbian)
             sudo apt update
-            # 使用官方推荐的 docker-compose-plugin
-            sudo apt install docker.io docker-compose-plugin git wget unzip curl -y
-            sudo systemctl enable --now docker
+            sudo apt install docker.io docker-compose-plugin wget unzip curl -y
             # 安装 rclone
-            sudo curl https://rclone.org/install.sh | sudo bash    
+            sudo curl https://rclone.org/install.sh | sudo bash
         ;;
     esac
     log::success "✅ 基础依赖安装完成！"

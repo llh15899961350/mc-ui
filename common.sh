@@ -18,7 +18,9 @@ COLOR_SUCCESS="\033[0;32m"                              # Green
 # ===== 常量定义 =====
 CONTAINER_NAME="mc-server"                             # Name of the Docker container
 COMPOSE_DIR="$HOME/opt/minecraft"                      # Directory containing docker-compose.yml
-
+# The root URL for the raw GitHub repository. 
+# Used by the update_menu function to download the latest version of the script.
+RAW_REPOSITORY="https://raw.githubusercontent.com/llh15899961350"
 # ==========================================
 # 🛡️ 动态权限注入 (解决跨服务器的权限隔离问题)
 # ==========================================

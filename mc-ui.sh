@@ -528,6 +528,64 @@ function restore() {
     fi
 }
 
+function enable_docker() {
+    echo ""
+}
+
+function disable_docker() {
+    echo ""
+}
+
+# 函数: 更新脚本菜单本身
+function update_menu() {
+    echo ""
+    log::info "🔄 Preparing to update mc-ui.sh to the latest version..."
+    
+    # 确认提示（使用与主脚本一致的 COLOR_WARN）
+    echo -e -n "${COLOR_WARN}Are you sure you want to update the menu script? [y/N]: ${COLOR_RESET}"
+    read -r confirm
+    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+        log::info "Update cancelled."
+        [[ $# -eq 0 ]] && before_show_menu
+        return 0
+    fi
+
+    # 构造下载地址。请确保 common.sh 中定义了 RAW_REPOSITORY，否则需要把这里替换为你的真实 GitHub/Gitee raw 链接
+    local URL="${RAW_REPOSITORY}/mc-ui/main/mc-ui.sh"
+    # 如果你在软链接环境下，最好直接覆盖运行脚本所在的真实目录下的脚本
+    local SCRIPT_PATH="$SCRIPT_DIR/mc-ui.sh"
+    local TEMP_FILE="/tmp/mc-ui_update_$$.sh"
+
+    log::info "Downloading latest script from $URL ..."
+    
+    # 下载到临时文件，防止网络断开导致原脚本被破坏为空文件
+    if curl -sSL -o "$TEMP_FILE" "$URL"; then
+        # 简单校验下载的内容是否包含 #!/bin/bash，防止下载到了 404 HTML 页面
+        if head -n 1 "$TEMP_FILE" | grep -q "#!/bin/bash"; then
+            # 校验通过，替换原文件并赋予执行权限
+            mv -f "$TEMP_FILE" "$SCRIPT_PATH"
+            chmod +x "$SCRIPT_PATH"
+            
+            log::success "✅ Menu updated successfully!"
+            echo -e "${COLOR_SUCCESS}The script will now restart to apply changes...${COLOR_RESET}"
+            sleep 2
+            
+            # 使用 exec 替换当前进程重新运行脚本，实现“热重启”
+            exec "$SCRIPT_PATH"
+        else
+            log::error "❌ Downloaded file seems invalid (not a bash script). Update aborted."
+            rm -f "$TEMP_FILE"
+            [[ $# -eq 0 ]] && before_show_menu
+            return 1
+        fi
+    else
+        log::error "❌ Failed to download the latest script. Please check your network or URL."
+        rm -f "$TEMP_FILE"
+        [[ $# -eq 0 ]] && before_show_menu
+        return 1
+    fi
+}
+
 # 函数: 日志管理菜单
 function show_log() {
     echo -e "╔────────────────────────────────────────────────╗"
@@ -625,10 +683,12 @@ function show_menu() {
         0)
             exit 0
 			;;
-        1|2|3|4)
+        1|2|4)
             echo "Option $choice is not implemented yet. (暂时无需实现)"
             read -n 1 -s -r -p "Press any key to continue..."
             ;;
+        3)
+            check_install && update_menu
         5)
             check_install && start
             ;;
@@ -645,12 +705,10 @@ function show_menu() {
             check_install && show_log
             ;;
         10)
-            if [ -f "./backup.sh" ]; then bash ./backup.sh; else echo "Error: backup.sh not found!"; fi
-            read -n 1 -s -r -p "Press any key to continue..."
+            check_install && enable_docker
             ;;
         11)
-            if [ -f "./restore.sh" ]; then bash ./restore.sh; else echo "Error: restore.sh not found!"; fi
-            read -n 1 -s -r -p "Press any key to continue..."
+            check_install && disable_docker
             ;;
         12)
             check_install && backup
