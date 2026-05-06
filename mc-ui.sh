@@ -18,6 +18,37 @@ echo "The OS release is: $release"
 #iplimit_log_path="${log_folder}/3xipl.log"
 #iplimit_banned_log_path="${log_folder}/3xipl-banned.log"
 
+# 函数: 处理脚本的自毁删除
+function delete_script() {
+    # 1. 获取脚本当前的真实物理路径（穿透软链接）
+    local REAL_PATH
+    REAL_PATH="$(readlink -f "$0")"
+    
+    # 2. 获取该脚本所在的父目录
+    local PARENT_DIR
+    PARENT_DIR="$(dirname "$REAL_PATH")"
+    
+    # 3. 判断父目录是否存在且是一个文件夹
+    if [[ -d "$PARENT_DIR" ]]; then
+        # ⚠️ 核心防呆保护：坚决防止因为路径异常导致的“删库跑路”
+        # 这里动态引用了 $HOME，没有硬编码特定的用户名
+        if [[ "$PARENT_DIR" == "/" || "$PARENT_DIR" == "/root" || "$PARENT_DIR" == "$HOME" || "$PARENT_DIR" == "/usr/local" ]]; then
+            log::warn "⚠️ The script is located in a critical system directory ($PARENT_DIR)."
+            log::warn "For safety, only the script files will be deleted instead of the whole folder."
+            # 保守删除：只删脚本自己和旁边的 common.sh
+            rm -f "$REAL_PATH"
+            rm -f "$PARENT_DIR/common.sh" 2>/dev/null
+        else
+            # 正常情况：直接把父文件夹以及里面的所有内容彻底删除
+            rm -rf "$PARENT_DIR"
+        fi
+    else
+        # 兜底逻辑：如果连父目录都找不到，就只删自己
+        rm -f "$REAL_PATH"
+    fi
+    
+    exit 0
+}
 
 # 函数: 检测 Docker 的运行状态 0: Running, 1: Not Running, 2:Not Installed
 function check_docker_status() {
@@ -39,11 +70,6 @@ function check_docker_compose_status() {
     else
         return 1
     fi
-}
-
-# 0: running, 1: not running, 2: not installed
-function check_status() {
-	echo ""
 }
 
 # 函数: 检测docker服务是否设置了开机自动启动 
@@ -407,7 +433,7 @@ function backup() {
 
     # --- Step 4: Upload to Google Drive ---
     log::info "Uploading to Google Drive..."
-    rclone copy "$MC_BACKUP_DIR/$FILENAME" "$REMOTE_PATH" $RCLONE_FLAGS
+    rclone copy "$MC_BACKUP_DIR/$FILENAME" "$RCLONE_REMOTE_PATH" $RCLONE_FLAGS
 
     # --- Step 5: Auto Cleanup (Keep $KEEP_COUNT) ---
     log::info "Cleaning up old backups (Retaining $KEEP_COUNT)..."
@@ -421,11 +447,11 @@ function backup() {
     fi
 
     # 5.2 Cloud Cleanup (Permanent delete)
-    CLOUD_EXPIRED=$(rclone lsf "$REMOTE_PATH" --include "${FILENAME_PREFIX}*.tar.gz" 2>/dev/null | sort -r | tail -n +$((KEEP_COUNT + 1)))
+    CLOUD_EXPIRED=$(rclone lsf "$RCLONE_REMOTE_PATH" --include "${FILENAME_PREFIX}*.tar.gz" 2>/dev/null | sort -r | tail -n +$((KEEP_COUNT + 1)))
     if [ -n "$CLOUD_EXPIRED" ]; then
         log::info "Deleting cloud expired backups (Bypassing trash)..."
         for FILE in $CLOUD_EXPIRED; do
-            rclone deletefile "$REMOTE_PATH/$FILE" --drive-use-trash=false
+            rclone deletefile "$RCLONE_REMOTE_PATH/$FILE" --drive-use-trash=false
         done
     fi
 
@@ -447,7 +473,7 @@ function restore() {
 
     # --- 1. 获取云端最新备份包的名字 ---
     # 使用 local 防止变量污染全局
-    local LATEST_BACKUP=$(rclone lsf "$REMOTE_PATH" --include "${FILENAME_PREFIX}*.tar.gz" 2>/dev/null | sort -r | head -n 1)
+    local LATEST_BACKUP=$(rclone lsf "$RCLONE_REMOTE_PATH" --include "${FILENAME_PREFIX}*.tar.gz" 2>/dev/null | sort -r | head -n 1)
 
     if [ -z "$LATEST_BACKUP" ]; then
         log::error "❌ No backup found with prefix '$FILENAME_PREFIX' on cloud."
@@ -474,7 +500,7 @@ function restore() {
     log::info "Downloading backup from cloud to temporary directory..."
     
     # 容错：如果下载失败，恢复容器状态并退出
-    if ! rclone copy "$REMOTE_PATH/$LATEST_BACKUP" "$TEMP_RESTORE_DIR"; then
+    if ! rclone copy "$RCLONE_REMOTE_PATH/$LATEST_BACKUP" "$TEMP_RESTORE_DIR"; then
         log::error "❌ Failed to download backup from Google Drive."
         rm -rf "$TEMP_RESTORE_DIR"
         [ "$WAS_RUNNING" = true ] && docker start "$CONTAINER_NAME" >/dev/null
@@ -528,12 +554,84 @@ function restore() {
     fi
 }
 
+# 函数: 启用并安装 Docker
 function enable_docker() {
     echo ""
+    
+    # 权限拦截：如果不是 root 或 sudo，则提示并返回菜单
+    if [[ $EUID -ne 0 ]]; then
+        log::error "❌ Permission denied: You must be root to install or enable Docker."
+        log::info "Please run the script with 'sudo' to use this feature."
+        echo ""
+        before_show_menu
+        return 1
+    fi
+
+    log::info "⏳ Preparing to enable Docker..."
+
+    check_docker_status
+    local docker_status=$?
+
+    if [[ $docker_status -eq 2 ]]; then
+        log::info "Docker is not installed. Starting installation..."
+        if curl -fsSL https://get.docker.com | bash -s docker; then
+            log::success "✅ Docker installed successfully."
+        else
+            log::error "❌ Failed to install Docker. Please check your network."
+            echo ""
+            before_show_menu
+            return 1
+        fi
+    else
+        log::info "Docker is already installed. Skipping installation."
+    fi
+
+    log::info "Enabling and starting Docker service..."
+    systemctl enable docker
+    systemctl start docker
+
+    if check_docker_status; then
+        log::success "✅ Docker is now running and enabled to start on boot."
+    else
+        log::error "❌ Failed to start Docker. Please check the system logs."
+    fi
+
+    echo ""
+    before_show_menu
 }
 
+# 函数: 禁用/停止 Docker
 function disable_docker() {
     echo ""
+    
+    # 权限拦截：如果不是 root 或 sudo，则提示并返回菜单
+    if [[ $EUID -ne 0 ]]; then
+        log::error "❌ Permission denied: You must be root to stop or disable Docker."
+        log::info "Please run the script with 'sudo' to use this feature."
+        echo ""
+        before_show_menu
+        return 1
+    fi
+
+    log::info "⏳ Preparing to disable Docker..."
+
+    check_docker_status
+    local docker_status=$?
+
+    if [[ $docker_status -ne 2 ]]; then
+        log::info "Stopping Docker service..."
+        systemctl stop docker
+        
+        log::info "Disabling Docker autostart..."
+        systemctl disable docker
+        
+        log::success "✅ Docker service has been stopped and disabled."
+    else
+        log::warn "Docker is not installed. Nothing to disable."
+    fi
+
+    echo ""
+    before_show_menu
 }
 
 # 函数: 更新脚本菜单本身
@@ -592,6 +690,77 @@ function update_menu() {
         [[ $# -eq 0 ]] && before_show_menu
         return 1
     fi
+}
+
+# 函数: 卸载面板及相关组件
+function uninstall() {
+    echo ""
+    log::info "⚠️  WARNING: You are about to uninstall the panel."
+    
+    # 修改了提示语，说明只会删除面板相关的 Rclone 配置
+    echo -e -n "${COLOR_WARN}Are you sure you want to uninstall the panel? (Your Rclone remote '${RCLONE_REMOTE_NAME}' will be deleted) [Y/n]: ${COLOR_RESET}"
+    read -r confirm </dev/tty
+    
+    confirm="${confirm//$'\r'/}"
+    confirm="${confirm// /}"
+
+    if [[ -n "$confirm" && "$confirm" != "y" && "$confirm" != "Y" ]]; then
+        log::info "Uninstall cancelled."
+        [[ $# -eq 0 ]] && before_show_menu
+        return 0
+    fi
+
+    log::info "⏳ Starting uninstallation process..."
+
+    # 1. 停止容器
+    if is_container_running; then
+        log::info "Stopping running Minecraft server..."
+        do_stop
+    fi
+
+    # 2. 清除 Docker 关于 ${CONTAINER_NAME} 的日志
+    log::info "Clearing Docker logs for ${CONTAINER_NAME}..."
+    local LOG_PATH
+    LOG_PATH=$(docker inspect --format='{{.LogPath}}' "$CONTAINER_NAME" 2>/dev/null)
+    if [ -n "$LOG_PATH" ] && [ -f "$LOG_PATH" ]; then
+        sudo sh -c "cat /dev/null > \"$LOG_PATH\""
+    fi
+
+    # 3. 删除备份目录
+    log::info "Removing backup directory..."
+    if [ -n "$MC_BACKUP_DIR" ] && [ -d "$MC_BACKUP_DIR" ]; then
+        rm -rf "$MC_BACKUP_DIR"
+    fi
+
+    # 4. 删除恢复目录
+    log::info "Removing restore directory..."
+    if [ -n "$MC_RESTORE_DIR" ] && [ -d "$MC_RESTORE_DIR" ]; then
+        rm -rf "$MC_RESTORE_DIR"
+    else
+        rm -rf /tmp/mc_restore_* 2>/dev/null
+    fi
+
+    # 5. 精准删除特定的 Rclone 网盘配置
+    log::info "Removing Rclone remote configuration for: ${RCLONE_REMOTE_NAME}..."
+    if command -v rclone >/dev/null 2>&1; then
+        if [ -n "$RCLONE_REMOTE_NAME" ]; then
+            # 使用官方命令精准删除指定 remote，忽略可能产生的错误输出
+            rclone config delete "$RCLONE_REMOTE_NAME" 2>/dev/null
+            log::success "Rclone remote '${RCLONE_REMOTE_NAME}' has been deleted."
+        else
+            log::warn "RCLONE_REMOTE_NAME is not set. Skipping Rclone config deletion."
+        fi
+    else
+        log::warn "Rclone is not installed. Skipping."
+    fi
+
+    echo ""
+    log::success "✅ Uninstalled Successfully."
+    log::info "If you need to install this panel again, you can use below command:"
+    log::info "${COLOR_SUCCESS}bash <(curl -Ls ${RAW_REPOSITORY}/mc-ui/main/install.sh)${COLOR_RESET}"
+    
+    trap delete_script EXIT
+    delete_script
 }
 
 # 函数: 日志管理菜单
@@ -691,12 +860,15 @@ function show_menu() {
         0)
             exit 0
 			;;
-        1|2|4)
+        1|2)
             echo "Option $choice is not implemented yet. (暂时无需实现)"
             read -n 1 -s -r -p "Press any key to continue..."
             ;;
         3)
             check_install && update_menu
+            ;;
+        4)
+            uninstall
             ;;
         5)
             check_install && start
