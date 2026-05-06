@@ -541,28 +541,36 @@ function update_menu() {
     echo ""
     log::info "🔄 Preparing to update mc-ui.sh to the latest version..."
     
-    # 确认提示（使用与主脚本一致的 COLOR_WARN）
-    echo -e -n "${COLOR_WARN}Are you sure you want to update the menu script? [y/N]: ${COLOR_RESET}"
-    read -r confirm
-    if [[ ! "$confirm" =~ ^[Yy]$ ]]; then
+    # 确认提示（[Y/n] 表示默认回车是同意）
+    echo -e -n "${COLOR_WARN}Are you sure you want to update the menu script? [Y/n]: ${COLOR_RESET}"
+    
+    # 读取用户输入（强制从终端读取，防止缓冲区有上一步遗留的字符）
+    read -r confirm </dev/tty
+    
+    # 纯 Bash 原生处理：剔除可能隐藏的 \r (Windows回车符) 和 空格
+    confirm="${confirm//$'\r'/}"
+    confirm="${confirm// /}"
+
+    # 核心判定逻辑：
+    # -n "$confirm" : 判断输入是否【不为空】
+    # 如果【不为空】 并且 【不是y】 并且 【不是Y】，才执行取消逻辑
+    if [[ -n "$confirm" && "$confirm" != "y" && "$confirm" != "Y" ]]; then
         log::info "Update cancelled."
         [[ $# -eq 0 ]] && before_show_menu
         return 0
     fi
 
-    # 构造下载地址。请确保 common.sh 中定义了 RAW_REPOSITORY，否则需要把这里替换为你的真实 GitHub/Gitee raw 链接
+    # 构造下载地址
     local URL="${RAW_REPOSITORY}/mc-ui/main/mc-ui.sh"
-    # 如果你在软链接环境下，最好直接覆盖运行脚本所在的真实目录下的脚本
     local SCRIPT_PATH="$SCRIPT_DIR/mc-ui.sh"
     local TEMP_FILE="/tmp/mc-ui_update_$$.sh"
 
     log::info "Downloading latest script from $URL ..."
     
-    # 下载到临时文件，防止网络断开导致原脚本被破坏为空文件
+    # 下载到临时文件
     if curl -sSL -o "$TEMP_FILE" "$URL"; then
-        # 简单校验下载的内容是否包含 #!/bin/bash，防止下载到了 404 HTML 页面
+        # 简单校验
         if head -n 1 "$TEMP_FILE" | grep -q "#!/bin/bash"; then
-            # 校验通过，替换原文件并赋予执行权限
             mv -f "$TEMP_FILE" "$SCRIPT_PATH"
             chmod +x "$SCRIPT_PATH"
             
@@ -570,7 +578,7 @@ function update_menu() {
             echo -e "${COLOR_SUCCESS}The script will now restart to apply changes...${COLOR_RESET}"
             sleep 2
             
-            # 使用 exec 替换当前进程重新运行脚本，实现“热重启”
+            # 热重启
             exec "$SCRIPT_PATH"
         else
             log::error "❌ Downloaded file seems invalid (not a bash script). Update aborted."
