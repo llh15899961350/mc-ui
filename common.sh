@@ -34,7 +34,7 @@ MC_RESTORE_DIR="/var/restore/minecraft"                # Temp folder for restora
 
 # --- Backup & Cloud ---
 REMOTE_PATH="gdrive:minecraft"                         # Rclone remote destination
-KEEP_COUNT=1                                           # Number of backups to keep1
+KEEP_COUNT=2                                           # Number of backups to keep
 FILENAME_PREFIX="mc_backup_"                           # Prefix for backup zip files
 RCLONE_FLAGS="--drive-chunk-size 64M --transfers 4 -v" # Rclone performance tuning flags
 
