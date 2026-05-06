@@ -1,5 +1,7 @@
 #!/bin/bash
 
+cd /
+
 # ==========================================
 # mc-ui - Minecraft Server Management Script
 # ==========================================
@@ -20,19 +22,22 @@ echo "The OS release is: $release"
 
 # 函数: 处理脚本的自毁删除
 function delete_script() {
-    # 1. 获取脚本当前的真实物理路径（穿透软链接）
-    local REAL_PATH
-    REAL_PATH="$(readlink -f "$0")"
-    
-    # 2. 获取该脚本所在的父目录
+    # 1. 使用更稳妥的方式获取脚本所在的绝对路径，避免得到 "."
     local PARENT_DIR
-    PARENT_DIR="$(dirname "$REAL_PATH")"
+    local REAL_PATH
     
+    # 切换到脚本所在目录并获取绝对路径，保证不管从哪里运行都能拿到真实路径
+    PARENT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    REAL_PATH="$PARENT_DIR/$(basename "$0")"
+
+    # 2. “金蝉脱壳”：切换到 /tmp 目录。
+    # 因为如果你留在 mc-ui 目录里面删 mc-ui 目录，可能会引发玄学问题
+    cd /tmp || exit
+
     # 3. 判断父目录是否存在且是一个文件夹
-    if [[ -d "$PARENT_DIR" ]]; then
+    if [[ -n "$PARENT_DIR" && -d "$PARENT_DIR" ]]; then
         # ⚠️ 核心防呆保护：坚决防止因为路径异常导致的“删库跑路”
-        # 这里动态引用了 $HOME，没有硬编码特定的用户名
-        if [[ "$PARENT_DIR" == "/" || "$PARENT_DIR" == "/root" || "$PARENT_DIR" == "$HOME" || "$PARENT_DIR" == "/usr/local" ]]; then
+        if [[ "$PARENT_DIR" == "/" || "$PARENT_DIR" == "/root" || "$PARENT_DIR" == "$HOME" || "$PARENT_DIR" == "/usr/local" || "$PARENT_DIR" == "/opt" ]]; then
             log::warn "⚠️ The script is located in a critical system directory ($PARENT_DIR)."
             log::warn "For safety, only the script files will be deleted instead of the whole folder."
             # 保守删除：只删脚本自己和旁边的 common.sh
@@ -40,11 +45,12 @@ function delete_script() {
             rm -f "$PARENT_DIR/common.sh" 2>/dev/null
         else
             # 正常情况：直接把父文件夹以及里面的所有内容彻底删除
+            # 此时 PARENT_DIR 一定是绝对路径，不会触发 "." 的报错
             rm -rf "$PARENT_DIR"
         fi
     else
         # 兜底逻辑：如果连父目录都找不到，就只删自己
-        rm -f "$REAL_PATH"
+        rm -f "$0"
     fi
     
     exit 0
@@ -694,6 +700,13 @@ function update_menu() {
 
 # 函数: 卸载面板及相关组件
 function uninstall() {
+
+    # ==========================================
+    # 核心修复：金蝉脱壳，防止触发 getcwd 和 chdir 报错
+    # 在进行任何删除之前，先将工作目录切换到用户主目录
+    # ==========================================
+    cd ~ || cd /tmp
+
     echo ""
     log::info "⚠️  WARNING: You are about to uninstall the panel."
     
@@ -729,14 +742,35 @@ function uninstall() {
     # 3. 删除备份目录
     log::info "Removing backup directory..."
     if [ -n "$MC_BACKUP_DIR" ] && [ -d "$MC_BACKUP_DIR" ]; then
-        rm -rf "$MC_BACKUP_DIR"
+        # 获取备份目录的父级目录
+        local BACKUP_PARENT
+        BACKUP_PARENT="$(dirname "$MC_BACKUP_DIR")"
+        
+        # 判断当前用户对父级目录是否有写权限 (-w)
+        if [ -w "$BACKUP_PARENT" ]; then
+            rm -rf "$MC_BACKUP_DIR"
+            log::success "Backup directory removed."
+        else
+            log::warn "No permission to delete $MC_BACKUP_DIR. Skipping."
+        fi
     fi
 
     # 4. 删除恢复目录
     log::info "Removing restore directory..."
     if [ -n "$MC_RESTORE_DIR" ] && [ -d "$MC_RESTORE_DIR" ]; then
-        rm -rf "$MC_RESTORE_DIR"
+        # 获取恢复目录的父级目录
+        local RESTORE_PARENT
+        RESTORE_PARENT="$(dirname "$MC_RESTORE_DIR")"
+        
+        # 判断当前用户对父级目录是否有写权限 (-w)
+        if [ -w "$RESTORE_PARENT" ]; then
+            rm -rf "$MC_RESTORE_DIR"
+            log::success "Restore directory removed."
+        else
+            log::warn "No permission to delete $MC_RESTORE_DIR. Skipping."
+        fi
     else
+        # 兜底清理 /tmp 下的残留，/tmp 默认所有用户都有权限
         rm -rf /tmp/mc_restore_* 2>/dev/null
     fi
 
@@ -759,7 +793,7 @@ function uninstall() {
     log::info "If you need to install this panel again, you can use below command:"
     log::info "${COLOR_SUCCESS}bash <(curl -Ls ${RAW_REPOSITORY}/mc-ui/main/install.sh)${COLOR_RESET}"
     
-    trap delete_script EXIT
+    # 修复：直接调用，删掉 trap，防止它在退出时再执行一次引发报错
     delete_script
 }
 

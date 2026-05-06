@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# 🔥 防止 cwd 丢失
+cd / || exit 1
+
 # ===== 彩色定义 =====
 COLOR_RESET="\033[0m"
 COLOR_INFO="\033[0;34m"
